@@ -14,6 +14,11 @@ def power(a, pow):
     return a**pow
 
 
+def linear(X, W):
+    # W is expressed as (out, in)
+    return X * W.T
+
+
 def mm(a, b):
     return a @ b
 
@@ -34,9 +39,16 @@ def vjp_sub(a, b, dldp):
     return dlda, -dldb
 
 
+def vjp_linear(X, W, dldp):
+    # i.e. 
+    dldX = dldp @ W
+    dldW = dldp.T @ X
+    return dldX, dldW
+
+
 def vjp_mm(a, b, dldp):
-    dlda = dldp @ b
-    dldb = dldp.T @ a
+    dlda = dldp @ b.T
+    dldb = a.T @ dldp
     return dlda, dldb
 
 
@@ -57,7 +69,7 @@ def vjp_hadamard(a, b, dldp):
 
 def vjp_power(a, alpha, dldp):
     dlda = (
-        alpha * dldp * pow(a, alpha - 1.0)
+        alpha * dldp * alpha * pow(a, alpha - 1.0)
     )  # local grad or jacob is alpha * pow(a, alpha-1)
     return dlda
 
