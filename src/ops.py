@@ -37,6 +37,8 @@ def vjp_sub(a, b, dldp):
      return dlda, -dldb
 
 
+# the fused transpose + mm implementation
+# more efficient than vjp_mm for linear layer
 def vjp_linear(a, b, dldp):
     # i.e.
     # dldX = dldp @ W

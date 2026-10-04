@@ -61,15 +61,11 @@ def fwdbck(W, X, Y):
     dldyhat = vjp_mse(y, Y, dldp=dlossdloss)  ## 2nd order tensor
     dldt, dldc = vjp_add(a=t, b=c, dldp=dldyhat)  ## 2nd order, 1st order
 
-    dldc = unbroadcast(dldc, c)
-
     dldz, dldB = vjp_linear(a=z, b=B, dldp=dldt)
     # print(dldz.shape, z.shape)
     dldu = vjp_sigmoid(a=u, dldp=dldz)
 
     dlds, dldb = vjp_add(a=s, b=b, dldp=dldu)
-
-    dldb = unbroadcast(dldb, b.shape)
 
     dldX, dldW = vjp_linear(a=X, b=W, dldp=dlds)
 
