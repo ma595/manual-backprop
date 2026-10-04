@@ -29,15 +29,12 @@ def hadamard(a, b):
 
 
 def vjp_add(a, b, dldp):
-    dlda = dldp
-    dldb = dldp
-    return dlda, dldb
+    return unbroadcast(dldp, a.shape), unbroadcast(dldp, b.shape)
 
 
 def vjp_sub(a, b, dldp):
-    dlda = dldp
-    dldb = dldp
-    return dlda, -dldb
+     dlda, dldb = vjp_add(a, b, dldp)
+     return dlda, -dldb
 
 
 def vjp_linear(a, b, dldp):
@@ -129,5 +126,5 @@ def vjp_sigmoid(a, dldp):
 
 
 # UNUSED - we rely on python broadcasting rules
-def vjp_reduction(A, shape):
-    return np.broadcast_to(A, shape)
+# def vjp_reduction(A, shape):
+#     return np.broadcast_to(A, shape)

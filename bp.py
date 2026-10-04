@@ -52,6 +52,7 @@ def fwd_backwd_bn(
     dldp,
     eps=1e-5,
 ):
+    eps = np.array(eps)
     gamma = np.ones((X.shape[1],), dtype=np.float32)
     bias = np.zeros((X.shape[1],), np.float32)
     ## Summation
@@ -76,23 +77,18 @@ def fwd_backwd_bn(
 
     ## BACKWARD:
     # bn_gamma_bias = add(bn_gamma, bias_)
-    dldbn_gamma, dlbias_ = vjp_add(bn_gamma, bias, dldp)  # we return dlbn_gamma
+    dldbn_gamma, grad_bias = vjp_add(bn_gamma, bias, dldp)  # we return dlbn_gamma
 
-    dldbias = unbroadcast(dlbias_, bias.shape)  # this reduces
+    dldbn, grad_gamma = vjp_hadamard(bn, gamma, dldbn_gamma)
 
-    dldbn, dldgamma_ = vjp_hadamard(bn, gamma, dldbn_gamma)
-
-    # Collapse gamma_ (3, 5) -> gamma (5,)
-    dldgamma = unbroadcast(dldgamma_, gamma.shape)
+    # Collapse gamma (3, 5) -> gamma (5,) for output
+    grad_gamma = unbroadcast(grad_gamma, gamma.shape)
 
     # bn = hadamard(num, denom_b)  # (3, 5) * (3, 5)
     dldnum, dldenom_b = vjp_hadamard(num, denom_vec, dldbn)
 
-    ## Variance
-    dldnom_vec = unbroadcast(dldenom_b, denom_vec.shape)
-
     # denom_vec = power(var_eps, -0.5)  # Pure Power: (5,)
-    dldvar_eps = vjp_power(var_eps, -0.5, dldnom_vec)
+    dldvar_eps = vjp_power(var_eps, -0.5, dldenom_b)
 
     # var_eps = add(var, eps_b)  # Elementwise: (5,) + scalar
     dldvar, dldeps = vjp_add(var, eps, dldvar_eps)
@@ -100,27 +96,22 @@ def fwd_backwd_bn(
     # var = (1.0 / len(X)) * sum0_  # (5,)
     dldsum0_ = vjp_scale(1.0 / len(X), dldvar)
 
-    # sum0_ = np.sum(b, axis=0)  # collapse: vector of size 5 i.e. feats
-    dldb = vjp_reduction(dldsum0_, b.shape)
-
     ## Numerator
     # b = pow(num, 2)  # size (3, 5) # applied elementwise
-    dldnum += vjp_power(num, 2.0, dldb)
+    dldnum += vjp_power(num, 2.0, dldsum0_)
 
     # num = sub(X, meanb)  # size (3,5) # broadcasting (possible extra op)
-    dldX, dldmean = vjp_sub(
+    grad_X, dldmean = vjp_sub(
         X, mean, dldnum
     )  # size (3,5) # broadcasting (possible extra op)
-
-    dldmean = unbroadcast(dldmean, mean.shape)
 
     # mean = (1.0 / len(X)) * sum0  # compute mean
     dldsum0 = vjp_scale(1.0 / len(X), dldmean)
 
     # sum0 = np.sum(X, axis=0)  # reduction # collapse: vector of size 5 i.
-    dldX += vjp_reduction(dldsum0, X.shape)
+    grad_X += dldsum0
 
-    return fwd, dldX, dldgamma, dldbias
+    return fwd, grad_X, grad_gamma, grad_bias
 
 
 def test_bn_fwd(data):
