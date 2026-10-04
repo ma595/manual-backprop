@@ -6,7 +6,7 @@ import torch
 
 import torch.nn as nn
 
-from ops import * 
+from src.ops import *
 
 torch.manual_seed(0)
 np.random.seed(42)
@@ -28,26 +28,21 @@ def bn_manual(X, eps=1e-5):
     ## Summation
     sum0 = np.sum(X, axis=0)  # reduction # collapse: vector of size 5 i.
     mean = (1.0 / len(X)) * sum0  # compute mean
-    meanb = np.broadcast_to(mean, X.shape)
-    num = sub(X, meanb)  # size (3,5) # broadcasting (possible extra op)
+    num = sub(X, mean)  # size (3,5) # broadcasting (possible extra op)
 
     # Denominator
     ## Variance
     b = pow(num, 2)  # size (3, 5) # applied elementwise # num
     sum0_ = np.sum(b, axis=0)  # collapse: vector of size 5 i.e. feats
     var = (1.0 / len(X)) * sum0_  # (5,)
-    eps_b = np.broadcast_to(eps, var.shape)  # Broadcast: () -> (5,)
-    var_eps = add(var, eps_b)  # Elementwise: (5,) + scalar
+    var_eps = add(var, eps)  # Elementwise: (5,) + scalar
     denom_vec = power(var_eps, -0.5)  # Pure Power: (5,)
-    denom_b = np.broadcast_to(denom_vec, X.shape)  # Broadcast:  (5,) -> (3, 5)
 
     # --- OUTPUT ---
-    bn = hadamard(num, denom_b)  # (3, 5) * (3, 5) # num
-    gamma_ = np.broadcast_to(gamma, X.shape)  # (5,) -> (3, 5)
-    bn_gamma = hadamard(bn, gamma_)  # (3 * 5) * (1 * 5)
+    bn = hadamard(num, denom_vec)  # (3, 5) * (3, 5) # num
+    bn_gamma = hadamard(bn, gamma)  # (3 * 5) * (1 * 5)
 
-    bias_ = np.broadcast_to(bias, bn_gamma.shape)
-    bn_gamma_bias = add(bn_gamma, bias_)
+    bn_gamma_bias = add(bn_gamma, bias)
 
     return bn_gamma_bias
 
@@ -89,7 +84,7 @@ def fwd_backwd_bn(
     dldbn_gamma, dlbias_ = vjp_add(bn_gamma, bias_, dldp)  # we return dlbn_gamma
 
     # bias_ = np.broadcast_to(bias, bn_gamma.shape)
-    dldbias = vjp_broadcast(dlbias_)  # this reduces
+    dldbias = unbroadcast(dlbias_, bias.shape)  # this reduces
 
     # bn_gamma = hadamard(bn, gamma_)  # (3 * 5) * (1 * 5)
     dldbn, dldgamma_ = vjp_hadamard(bn, gamma_, dldbn_gamma)
@@ -97,7 +92,7 @@ def fwd_backwd_bn(
     # print("dldbn_gamma ", dldbn_gamma)
     # Collapse gamma_ (3, 5) -> gamma (5,)
     # gamma_ = np.broadcast_to(gamma, X.shape)  # (5,) -> (3, 5)
-    dldgamma = vjp_broadcast(dldgamma_)
+    dldgamma = unbroadcast(dldgamma_, gamma.shape)
     # print("dldgamma reduced", dldgamma)
 
     ## DO NOT CARE BELOW THIS
@@ -106,7 +101,7 @@ def fwd_backwd_bn(
 
     ## Variance
     # denom_b = np.broadcast_to(denom_vec, X.shape)  # Broadcast:  (5,) -> (3, 5)
-    dldnom_vec = vjp_broadcast(dldenom_b)
+    dldnom_vec = unbroadcast(dldenom_b, denom_vec.shape)
 
     # denom_vec = power(var_eps, -0.5)  # Pure Power: (5,)
     dldvar_eps = vjp_power(var_eps, -0.5, dldnom_vec)
@@ -131,7 +126,7 @@ def fwd_backwd_bn(
     )  # size (3,5) # broadcasting (possible extra op)
 
     # meanb = np.broadcast_to(mean, X.shape)
-    dldmean = vjp_broadcast(dldmeanb)
+    dldmean = unbroadcast(dldmeanb, mean.shape)
 
     # mean = (1.0 / len(X)) * sum0  # compute mean
     dldsum0 = vjp_scale(1.0 / len(X), dldmean)

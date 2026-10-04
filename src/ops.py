@@ -129,5 +129,5 @@ def vjp_sigmoid(a, dldp):
 
 
 # UNUSED - we rely on python broadcasting rules
-# def vjp_reduction(A, shape):
-#     return np.broadcast_to(A, shape)
+def vjp_reduction(A, shape):
+    return np.broadcast_to(A, shape)
