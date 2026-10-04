@@ -69,7 +69,7 @@ def vjp_hadamard(a, b, dldp):
 
 def vjp_power(a, alpha, dldp):
     dlda = (
-        alpha * dldp * alpha * pow(a, alpha - 1.0)
+        alpha * dldp * pow(a, alpha - 1.0)
     )  # local grad or jacob is alpha * pow(a, alpha-1)
     return dlda
 
