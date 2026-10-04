@@ -64,7 +64,7 @@ def fwd_backwd_bn(
     b = pow(num, 2.0)  # size (3, 5) # applied elementwise # num
     sum0_ = np.sum(b, axis=0)  # collapse: vector of size 5 i.e. feats
     var = (1.0 / len(X)) * sum0_  # (5,)
-    var_eps = add(var, eps)  # Elementwise: (5,) + scalar
+    var_eps = add(var, eps)  # Elementwise: (5,) + scalar broadcast
     denom_vec = power(var_eps, -0.5)  # Pure Power: (5,)
 
     # --- OUTPUT ---
@@ -80,15 +80,11 @@ def fwd_backwd_bn(
 
     dldbias = unbroadcast(dlbias_, bias.shape)  # this reduces
 
-    # bn_gamma = hadamard(bn, gamma_)  # (3 * 5) * (1 * 5)
     dldbn, dldgamma_ = vjp_hadamard(bn, gamma, dldbn_gamma)
 
-    # print("dldbn_gamma ", dldbn_gamma)
     # Collapse gamma_ (3, 5) -> gamma (5,)
     dldgamma = unbroadcast(dldgamma_, gamma.shape)
-    # print("dldgamma reduced", dldgamma)
 
-    ## DO NOT CARE BELOW THIS
     # bn = hadamard(num, denom_b)  # (3, 5) * (3, 5)
     dldnum, dldenom_b = vjp_hadamard(num, denom_vec, dldbn)
 
@@ -116,7 +112,6 @@ def fwd_backwd_bn(
         X, mean, dldnum
     )  # size (3,5) # broadcasting (possible extra op)
 
-    # meanb = np.broadcast_to(mean, X.shape)
     dldmean = unbroadcast(dldmean, mean.shape)
 
     # mean = (1.0 / len(X)) * sum0  # compute mean
