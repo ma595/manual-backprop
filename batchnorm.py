@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 from torch.nn import BatchNorm1d
 from torch import tensor
@@ -19,7 +18,7 @@ np.random.seed(42)
 
 def init_data(examples, feats):
     torch.manual_seed(0)
-    return torch.rand((examples, feats))
+    return torch.rand((examples, feats), dtype=torch.float64)
 
 
 def bn_manual(X, eps=1e-5):
@@ -123,15 +122,14 @@ def test_bn_fwd(data):
 def test_backward_bn(data):
     data_cpy = data.detach().clone().numpy()
     data.requires_grad = True
-    model = BatchNorm1d(num_features=data.shape[1], dtype=torch.float32)
+    model = BatchNorm1d(num_features=data.shape[1], dtype=torch.float64)
     model.zero_grad()
     fwd_pt = model(data)
 
-    dldp_np = np.random.randn(*data.shape).astype(np.float32)
+    dldp_np = np.random.randn(*data.shape).astype(np.float64)
     fwd_pt.backward(tensor(dldp_np))
     params = model.parameters()
     params_l = list(params)
-    # print(fwd_pt)
 
     grads = dict()
 
@@ -144,10 +142,10 @@ def test_backward_bn(data):
     grads["X"] = data.grad
 
     # now do assertions
-    assert np.allclose(grads["weight"].detach().cpu().numpy(), dldgamma)
-    assert np.allclose(grads["bias"].detach().cpu().numpy(), dldbias)
-    assert np.allclose(grads["X"].detach().cpu().numpy(), dldX)
-    assert np.allclose(fwd_pt.detach().cpu().numpy(), fwd)
+    np.testing.assert_allclose(grads["weight"].detach().cpu().numpy(), dldgamma)
+    np.testing.assert_allclose(grads["bias"].detach().cpu().numpy(), dldbias)
+    np.testing.assert_allclose(grads["X"].detach().cpu().numpy(), dldX)
+    np.testing.assert_allclose(fwd_pt.detach().cpu().numpy(), fwd)
 
 
 def main():
@@ -158,7 +156,6 @@ def main():
     # test_bn_fwd(X)
     # fwd, dldX, dldgamma, dldbias = fwd_backwd(X_new, dldp_np)
     test_backward_bn(X)
-    # print(dldgamma, '\n', dldbias)
     # np.pow(a,-1)
 
 

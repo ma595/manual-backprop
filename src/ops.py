@@ -1,5 +1,4 @@
 import numpy as np
-from torch.nn.functional import sigmoid
 
 
 def sub(a, b):
@@ -26,6 +25,9 @@ def mm(a, b):
 
 def hadamard(a, b):
     return a * b
+
+def sigmoid(a):
+    return 1 / (1 + np.exp(-a))
 
 
 def vjp_add(a, b, dldp):
@@ -108,7 +110,6 @@ def vjp_scale(scale, dldp):
 
 
 def vjp_hadamard(a, b, dldp):
-    # print(dldp.shape, b.shape, a.shape)
     dlda = dldp * b
     dldb = dldp * a
     return dlda, dldb
@@ -122,7 +123,6 @@ def vjp_power(a, alpha, dldp):
 
 
 def vjp_sigmoid(a, dldp):
-    # print(dldp.shape, a.shape)
     dlda = dldp * sigmoid(a) * (1 - sigmoid(a))
     return dlda
 
