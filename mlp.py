@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from src.ops import *
-from torch.nn.functional import sigmoid
 
 torch.manual_seed(0)
 
@@ -32,6 +31,7 @@ def ffn(params, X, Y):
     u = s + b
 
     # print(u.shape)
+    from torch.nn.functional import sigmoid
     z = sigmoid(u)
 
     t = z @ B.T
@@ -49,8 +49,7 @@ def fwdbck(W, X, Y):
     s = X @ W.T
     u = s + b
     # z = sigmoid(u)
-    from src.ops import sigmoid as snpy
-    z = snpy(u)
+    z = sigmoid(u)
     t = z @ B.T
     y = t + c
 
@@ -109,6 +108,6 @@ def test_single_step(X_train, Y_train):
 
 
 if __name__ == "__main__":
-    from src.ds import create_XY_data
+    from src.dataset import create_XY_data
     tempX, tempY = create_XY_data(10)
     test_single_step(tempX, tempY)
