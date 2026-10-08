@@ -17,7 +17,7 @@ def power(a, pow):
 
 def linear(X, W):
     # W is expressed as (out, in)
-    return X * W.T
+    return X @ W.T
 
 
 def mm(a, b):
