@@ -31,8 +31,7 @@ def ffn(params, X, Y):
     u = s + b
 
     # print(u.shape)
-    from torch.nn.functional import sigmoid
-    z = sigmoid(u)
+    z = torch.sigmoid(u)
 
     t = z @ B.T
     y = t + c
