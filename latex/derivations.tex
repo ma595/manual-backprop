@@ -1,0 +1,423 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+
+\title{Derivations}
+\author{Matthew Archer}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+% =====================================================================
+\section{Single-example MLP (\texttt{torch\_linear.ipynb})}
+% =====================================================================
+
+\subsection{Explanation of the Jacobian check}
+
+We want to be able to build the jacobian numerically and analytically in order
+to check the derivatives.
+
+Analytically, we can use the vjp and use a unit vector to retrieve the jacobian
+row by row.
+
+Numerically, we can compute finite differences to retrieve the jacobian column
+by column.
+
+Example:
+
+Definitions: $W$ is (rows, cols), $x$ is a column vector with (cols, 1)
+
+For the $\frac{dy}{dW}$ (i.e.\ local) Matrix vector multiplication: $y = W x$
+
+The jacobain $dy / dW$ is a rank 3 tensor:
+
+Numerically we loop over $W$ (row by column). For each index $W_{ij}$ we get a
+column vector of shape (cols, 1). When stacked this is (8, 2, 1)
+
+Analytically, we recover a `row' for each output $y_i$. In this case, a row
+turns out to contain a matrix, this has shape $[2, 2, 4]$.
+
+\medskip
+Alternatively we can see this as the following:
+
+\texttt{J\_analytic = sens\_W\_analytic.view(rows, rows * cols)}
+
+i.e.\ this flattens the (2, 4, 2) into (2, 8)
+
+Our numeric is already (8, 2, 1)
+
+Which we could squeeze and take the transpose to get (2, 8)
+
+\subsection{Derivation of vjp for mm, add..}
+
+\subsubsection*{Forward}
+
+Layer 1
+\begin{align*}
+s_i &= W_{ij} x_j \\
+u_i &= s_i + b_i
+\end{align*}
+
+Activation
+\[
+z_i = \sigma(u_i)
+\]
+
+Layer 2
+\begin{align*}
+t_i &= B_{ij} z_j \\
+\hat{y}_i &= t_i + c_i
+\end{align*}
+
+Loss
+\[
+l = 0.5\,(\hat{y}_i - y_i)^2
+\]
+
+\subsubsection*{Backward}
+Sequence of steps:
+
+Keeping the outer (upstream) gradient on the left. (This doesn't really matter
+when using index notation)
+
+Error (on a single example basis)
+\[
+\frac{dl}{d\hat{y_i}} = \hat{y_i} - y_i
+\]
+
+2nd Add, $\hat{y}_i = t_i + c_i$
+\[
+\pd{l}{t_i} = \pd{l}{\hat{y_k}} \pd{\hat{y_k}}{t_i}, \quad \pd{l}{c_i} = \pd{l}{\hat{y_k}} \pd{\hat{y_k}}{c_i}
+\]
+
+2nd Matmul, $t_i = B_{ij} z_j$
+\[
+\pd{l}{B_{ij}} = \pd{l}{t_k} \pd{t_k}{B_{ij}}, \quad \pd{l}{z_i} = \pd{l}{t_k} \pd{t_k}{z_i}
+\]
+
+Propagate through activation function, $z_i = \sigma(u_i)$
+\[
+\pd{l}{u_i} = \pd{l}{z_k}\pd{z_k}{u_i}
+\]
+
+1st Add, $u_i = s_i + b_i$
+\[
+\pd{l}{s_i} = \pd{l}{u_k} \pd{u_k}{s_i} , \quad \pd{l}{b_i} = \pd{l}{u_k} \pd{u_k}{b_i}
+\]
+
+1st Matmul, $s_i = W_{ij} x_j$
+\[
+\pd{l}{W_{ij}} = \pd{l}{s_k}\pd{s_k}{W_{ij}}, \quad \pd{l}{x} \text{ is unused}
+\]
+
+\subsection{Actual derivations assuming scalar input}
+First add is trivial so we'll ignore. Error is actually $e_i = \hat{y_i} - y_i$
+
+Sum is $\Sigma_i^n$, where $n$ is the batch size. $l = 0.5e_i e_i$. i.e.
+\[
+\frac{dl}{d\hat{y_i}} = \hat{y_i} - y_i = e_i
+\]
+
+2nd Add, $\hat{y}_i = t_i + c_i$
+\[
+\pd{l}{t_i} = \pd{l}{\hat{y_k}} \pd{\hat{y_k}}{t_i}, \quad \pd{l}{c_i} = \pd{l}{\hat{y_k}} \pd{\hat{y_k}}{c_i}
+\]
+\[
+\pd{l}{t_i} = e_k \delta_{ki}, \quad \pd{l}{c_i} = e_k \delta_{ki}
+\]
+
+2nd Matmul, $t_i = B_{ij} z_j$
+\[
+\pd{l}{B_{ij}} = \pd{l}{t_k} \pd{t_k}{B_{ij}}, \quad \pd{l}{z_i} = \pd{l}{t_k} \pd{t_k}{z_i}
+\]
+\[
+\pd{l}{B_{ij}} = e_k \pd{B_{kl} z_l}{B_{ij}} = e_k \delta_{ki} \delta_{lj} z_l = e_i z_j, \quad \pd{l}{z_i} = e_k \pd{B_{kl} z_l}{z_i} = e_k B_{kl} \delta_{li} = e_k B_{ki}
+\]
+
+Propagate through activation function, $z_i = \sigma(u_i)$
+\[
+\pd{l}{u_i} = \pd{l}{z_k}\pd{z_k}{u_i}
+\]
+\[
+\pd{l}{u_i} = e_m B_{mk} \pd{\sigma(u_k)}{u_i} = e_m B_{mk} \sigma_k(1-\sigma_k)\delta_{ki} = e_m B_{mi} \sigma_i(1-\sigma_i)
+\]
+
+1st Add, $u_i = s_i + b_i$
+\[
+\pd{l}{s_i} = \pd{l}{u_k} \pd{u_k}{s_i} , \quad \pd{l}{b_i} = \pd{l}{u_k} \pd{u_k}{b_i}
+\]
+
+Addition just streams upstream derivatives (adjoint)
+\[
+\pd{l}{s_i} = \pd{l}{u_k} \delta_{ki} = \pd{l}{u_i}, \quad \pd{l}{b_i} = \pd{l}{u_i}
+\]
+
+1st Matmul, $s_i = W_{ij} x_j$
+\[
+\pd{l}{W_{ij}} = \pd{l}{s_k}\pd{s_k}{W_{ij}}, \quad \pd{l}{x} \text{ is unused}
+\]
+\[
+\pd{l}{W_{ij}} = \pd{l}{u_k}\pd{W_{kl} x_l}{W_{ij}} = \pd{l}{u_k}\delta_{ki} \delta_{lj} x_l = \pd{l}{u_i} x_j
+\]
+
+TODO: I don't think this works for batches yet as it assumes that $x_j$ is just
+a vector -- need to write it for batch next.
+
+% =====================================================================
+\section{Batch implementation (\texttt{torch\_linear\_batch\_derivation.ipynb})}
+% =====================================================================
+
+This is a reimplementation of \texttt{torch\_linear.ipynb} computing SGD on
+batches. The mathematics isn't really that much more difficult.
+
+\subsection{Derivation of vjp for mm, add..}
+
+\subsubsection*{Forward}
+
+Layer 1
+
+We typically treat $W$ as (out\_dim, in\_dim), which is fine when $x$ is a
+vector. However, with batched inputs, we want each row to correspond to a
+different item in the batch: $X_{ik}$ -- each row is an example -- $i$
+increments over the batch.
+
+Previously we had.
+\begin{equation*}
+s_{i} = W_{ij} x_j
+\end{equation*}
+
+Now batch aware ($i$ is the batch index):
+\begin{align*}
+  s_{ij} &=  W_{jk} X_{ik} \\
+  s_{ij} &=  W^T_{kj} X_{ik} \\
+  s_{ij} &=  X_{ik} W^T_{kj}
+\end{align*}
+
+In non-index notation, this is:
+\begin{equation*}
+  \mathbf{s}  := \mathbf{X} @ \mathbf{W}^T
+\end{equation*}
+Broadcasting:
+\begin{equation*}
+u_{ij} = s_{ij} + b_{j}
+\end{equation*}
+Activation
+\[
+z_{ij} = \sigma(u_{ij})
+\]
+
+Layer 2
+
+$B$ is actually a vector for univariate regression. But we write it in general
+multivariate here.
+\begin{align*}
+t_{ij} &= z_{ik} B^T_{kj} \\
+\hat{y}_{ij} &= t_{ij} + c_j
+\end{align*}
+
+Loss (where $i$ is the example and $j$ is the number of outputs). Remember that
+$y$ is the actual value and $\hat{y}$ is the prediction. Below it is written in
+general form for multi variable output. I.e.\ regression in multiple dimensions
+(predicting 2 dimensions for instance.)
+\[
+l = 0.5\,(\hat{y}_{ij} - y_{ij})(\hat{y}_{ij} - y_{ij})
+\]
+
+\subsubsection*{Backward}
+Sequence of steps:
+
+Keeping the outer (upstream) gradient on the left. (This doesn't really matter
+when using index notation)
+\[
+\frac{dl}{d\hat{y}_{kl}} = \frac{1}{2NM} \pd{}{\hat{y}_{kl}}(\hat{y}_{ij} - y_{ij})^2 = \frac{1}{NM} \delta_{ik}\delta_{jl} (\hat{y}_{ij} - y_{ij}) = \frac{1}{NM}(\hat{y}_{kl} - y_{kl}) = e_{kl}
+\]
+
+2nd Add, $\hat{y}_{ij} = t_{ij} + c_j$
+\[
+\pd{l}{t_{ij}} = \pd{l}{\hat{y}_{kl}} \pd{\hat{y}_{kl}}{t_{ij}}, \quad \pd{l}{c_j} = \pd{l}{\hat{y}_{kl}} \pd{\hat{y}_{kl}}{c_j}
+\]
+\[
+\pd{l}{\hat{y}_{kl}} = e_{kl}
+\]
+\[
+\pd{l}{t_{ij}} = e_{ij}, \quad \pd{l}{c_j} = \frac{1}{NM} (\hat{y}_{kj} - y_{kj}) = \sum_k^N  e_{kj}
+\]
+
+2nd Matmul, $t_{ij} = z_{ik} B^{T}_{kj}$
+\[
+\pd{l}{B_{ij}} = \pd{l}{t_{kl}} \pd{t_{kl}}{B_{ij}}, \quad \pd{l}{z_{ij}} = \pd{l}{t_{kl}} \pd{t_{kl}}{z_{ij}}
+\]
+\[
+\pd{l}{t_{kl}} = e_{kl}, \quad \pd{t_{kl}}{B_{ij}} = z_{km}\pd{B_{ml}^T}{B_{ij}} = z_{km}\delta_{il}\delta_{jm}
+\]
+\[
+\pd{l}{B_{ij}} = e_{ki} z_{kj}, \quad \pd{l}{z_{ij}} = e_{il}B_{lj}
+\]
+
+Propagate through activation function, $z_{ij} = \sigma(u_{ij})$
+\[
+\pd{l}{u_{ij}} = \pd{l}{z_{kl}}\pd{z_{kl}}{u_{ij}}
+\]
+\[
+\pd{l}{u_{ij}} = e_{km}{B_{ml}}\sigma_{kl}(1-\sigma_{kl})\delta_{ik}\delta_{jl} = e_{im}{B_{mj}}\sigma_{ij}(1-\sigma_{ij})
+\]
+
+1st Add, $u_{ij} = s_{ij} + b_j$
+\[
+\pd{l}{s_{ij}} = \pd{l}{u_{kl}} \pd{u_{kl}}{s_{ij}} , \quad \pd{l}{b_j} = \pd{l}{u_{kl}} \pd{u_{kl}}{b_j}
+\]
+\[
+\pd{l}{s_{ij}} = \pd{l}{u_{kl}} \delta_{ik}\delta_{jl}, \quad \pd{l}{b_j} = \pd{l}{u_{kl}} \delta_{jl}
+\]
+
+1st Matmul, $s_{ij} = X_{ik} W_{kj}^T$
+\[
+\pd{l}{W_{ij}} = \pd{l}{s_{kl}}\pd{s_{kl}}{W_{ij}}, \quad \pd{l}{X_{ij}} \text{ is unused}
+\]
+\[
+\pd{l}{W_{ij}} = \pd{l}{s_{kl}} X_{km} \pd{W_{ml}^T}{W_{ij}} = \pd{l}{s_{kl}} X_{km} \delta_{il} \delta_{jm} = \pd{l}{s_{ki}} X_{kj}
+\]
+
+\subsection{Test problem: Rotations}
+
+Given $\mathbf{x} \in \mathbb{R}^2$ and $\theta \in (0, 2 \pi)$ we must learn
+the 2D rotation matrix:
+\[
+\mathbf{y} = \mathbf{R} \mathbf{x} = \begin{pmatrix} cos\theta & -sin\theta \\ sin\theta & cos\theta \end{pmatrix} \begin{pmatrix} x_1 \\ x_2 \end{pmatrix}
+\]
+
+% =====================================================================
+\section{Batch norm derivation (\texttt{torch\_batch\_norm\_derivation.ipynb})}
+% =====================================================================
+
+\[
+y = \frac{x - \mathrm{E}[x]}{\sqrt{\mathrm{Var}[x] + \epsilon}} * \gamma + \beta
+\]
+
+Best pen and paper source is:
+
+Kevin Zakka's blog post: ``Deriving the Gradient for the Backward Pass of Batch
+Normalization''.
+
+\begin{enumerate}
+  \setcounter{enumi}{3}
+  \item The Original Source: Batch Normalization: Accelerating Deep Network
+        Training by Reducing Internal Covariate Shift
+\end{enumerate}
+\begin{enumerate}
+  \setcounter{enumi}{2}
+  \item The Math Derivation: Deriving the Gradient for the Backward Pass of
+        Batch Normalization. By: Frederik Kratzert (Blog Post / Markdown Guide)
+\end{enumerate}
+
+\url{https://www.youtube.com/watch?v=Y23QgQGAGJQ}
+
+Matrix calculus you need for DL. \url{https://arxiv.org/pdf/1802.01528}
+
+\begin{enumerate}
+  \item It explicitly focuses on the Vector-Jacobian Product (VJP). Instead of
+        forcing you to memorize giant Jacobian matrices, Howard and Parr
+        introduce the math from a ``row vector times Jacobian'' perspective.
+        They show you how to trace a vector of downstream gradients through
+        operations without ever materializing a giant, sparse, memory-wasting
+        matrix in your code.
+\end{enumerate}
+
+Strategy:
+\begin{itemize}
+  \item decompose all the above into individual vjp
+\end{itemize}
+
+\subsection{Now write in terms of ops}
+
+\begin{enumerate}
+  \setcounter{enumi}{-1}
+  \item Summation / scaling gate (mean) -- $1/n$ sum over batch
+  \item Subtraction
+  \item Power
+  \item Summation / scaling ()
+  \item Denominator
+  \item inverse
+  \item mm
+\end{enumerate}
+
+\subsubsection*{Example}
+
+$X$ is (3, 5) i.e.\ 3 examples and 5 features
+
+mean should be size 5 (average over each feature)
+
+\subsection{Now do vjps}
+
+\subsubsection*{Vjp of broadcast and reduction}
+To make this easier I have explicitly used broadcast and reduction in the
+forward chain. I also broke the sum scale into two separate ops. Scaling by a
+constant is trivial.
+\begin{itemize}
+  \item there are some downsides to this that I will discuss later
+  \item benefits
+\end{itemize}
+However we have to put in control flow checks for different dimensions of a
+tensor.
+
+some notes:
+\begin{itemize}
+  \item add\_scalar is trivial
+\end{itemize}
+
+We now need to implement these vjps in reverse.
+
+\subsubsection*{vjp of \texttt{broadcast\_to()}}
+The vjp of the broadcast
+
+Going from $b_j$ to $B_{ij}$
+
+$B_{ij} = \mathrm{fn}(b_j)$ therefore we differentiated $L$ w.r.t.\ $B_{ij}$
+\begin{align*}
+B_{ij} &= b_j; \quad \text{or} \\
+b_j &= \sum_i B_{ij} \\
+\text{vjp of broadcast:} \quad \pd{L}{B_{ij}} = \pd{L}{b_k} \pd{b_{k}}{B_{ij}} &= \pd{L}{b_k}\sum_l \pd{B_{lk}}{B_{ij}} = \pd{L}{b_k}\sum_l \delta_{il} \delta_{jk} \\
+\quad \quad \text{i.e. the r.h.s sum is non-zero only when l = k } \\
+\text{vjp of reduction:} \quad \pd{L}{b_k} = \pd{L}{B_{ij}} \pd{B_{ij}}{b_k} &= \pd{L}{B_{ij}}\delta_{kj} = \pd{L}{B_{ik}}
+\end{align*}
+
+So we see that the vjp of a broadcast is a reduction, and the vjp of a sum is a
+broadcast.
+
+\subsubsection*{vjp of \texttt{hadamard()}}
+\begin{align*}
+p &= a \odot b\\
+\pd{L}{a_{ij}} &= \pd{L}{p_{kl}} \pd{p_{kl}}{a_{ij}} \\
+\pd{L}{b_{ij}} &= \pd{L}{p_{kl}} \pd{p_{kl}}{b_{ij}} \\
+p_{ij} &= a_{ij} b_{ij}\\
+\pd{p_{ij}}{a_{kl}} = \pd{(a_{ij} b_{ij})}{a_{kl}} = b_{ij} \pd{a_{ij}}{a_{kl}} &= b_{ij}\delta_{ki}\delta_{lj} \\
+ \pd{p_{kl}}{a_{ij}}  &= b_{kl}\delta_{ik}\delta_{jl} \\
+\pd{L}{a_{ij}} &= \pd{L}{p_{kl}} b_{kl} \delta_{ik}\delta_{jl} = \pd{L}{p_{ij}} b_{ij}
+\end{align*}
+
+ops: $dL/dB$
+\[
+B = B(\gamma, \beta)
+\]
+\[
+s = \sum_b X_{bj}
+\]
+
+vjp
+\[
+\frac{\partial s }{\partial X_{lm}} = \sum_b \frac{\partial X}{\partial}
+\]
+
+\subsection{Other ops?}
+\begin{itemize}
+  \item Broadcasting might be an option to be absolutely explicit -- we have to
+        do the opposite for vjp.
+\end{itemize}
+
+\end{document}
