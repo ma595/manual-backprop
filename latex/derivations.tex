@@ -379,13 +379,25 @@ The vjp of the broadcast
 Going from $b_j$ to $B_{ij}$
 
 $B_{ij} = \mathrm{fn}(b_j)$ therefore we differentiated $L$ w.r.t.\ $B_{ij}$
-\begin{align*}
-B_{ij} &= b_j; \quad \text{or} \\
-b_j &= \sum_i B_{ij} \\
-\text{vjp of broadcast:} \quad \pd{L}{B_{ij}} = \pd{L}{b_k} \pd{b_{k}}{B_{ij}} &= \pd{L}{b_k}\sum_l \pd{B_{lk}}{B_{ij}} = \pd{L}{b_k}\sum_l \delta_{il} \delta_{jk} \\
-\quad \quad \text{i.e. the r.h.s sum is non-zero only when l = k } \\
-\text{vjp of reduction:} \quad \pd{L}{b_k} = \pd{L}{B_{ij}} \pd{B_{ij}}{b_k} &= \pd{L}{B_{ij}}\delta_{kj} = \pd{L}{B_{ik}}
-\end{align*}
+
+\paragraph{Broadcast.} Forward:
+\[
+B_{ij} = b_j
+\]
+vjp of broadcast:
+\[
+\pd{L}{b_k} = \pd{L}{B_{ij}} \pd{B_{ij}}{b_k} = \pd{L}{B_{ij}}\delta_{kj} = \sum_i \pd{L}{B_{ik}}
+\]
+
+\paragraph{Reduction.} Forward:
+\[
+b_j = \sum_i B_{ij}
+\]
+vjp of reduction:
+\[
+\pd{L}{B_{ij}} = \pd{L}{b_k} \pd{b_{k}}{B_{ij}} = \pd{L}{b_k}\sum_l \pd{B_{lk}}{B_{ij}} = \pd{L}{b_k}\sum_l \delta_{il} \delta_{jk} = \pd{L}{b_j}
+\]
+i.e.\ the r.h.s sum is non-zero only when $l = i$.
 
 So we see that the vjp of a broadcast is a reduction, and the vjp of a sum is a
 broadcast.
