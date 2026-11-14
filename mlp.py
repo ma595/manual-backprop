@@ -43,7 +43,6 @@ def ffn(params, X, Y):
 def fwdbck(W, X, Y):
     ((W, b), (B, c)) = W
 
-
     # forward
     s = X @ W.T
     u = s + b
@@ -64,7 +63,7 @@ def fwdbck(W, X, Y):
     dldt, dldc = vjp_add(a=t, b=c, dldp=dldyhat)  ## 2nd order, 1st order
 
     dldz, dldB = vjp_linear(a=z, b=B, dldp=dldt)
-    # print(dldz.shape, z.shape)
+
     dldu = vjp_sigmoid(a=u, dldp=dldz)
 
     dlds, dldb = vjp_add(a=s, b=b, dldp=dldu)
@@ -73,8 +72,6 @@ def fwdbck(W, X, Y):
 
     # all gradients for all params computed, ready to return
     return ((dldW, dldb), (dldB, dldc)), lo
-
-
 
 
 def test_single_step(X_train, Y_train):
@@ -108,5 +105,9 @@ def test_single_step(X_train, Y_train):
 
 if __name__ == "__main__":
     from src.dataset import create_XY_data
+
     tempX, tempY = create_XY_data(10)
+    print(tempX.shape)
+    print(tempY.shape)
+    
     test_single_step(tempX, tempY)

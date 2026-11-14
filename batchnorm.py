@@ -8,7 +8,7 @@ import torch.nn as nn
 from src.ops import *
 
 torch.manual_seed(0)
-np.random.seed(42)
+np.random.seed(0)
 
 # Set X_new
 # X_new = np.random.randn(*X.shape).astype(np.float32)
@@ -79,9 +79,6 @@ def fwd_backwd_bn(
     dldbn_gamma, grad_bias = vjp_add(bn_gamma, bias, dldp)  # we return dlbn_gamma
 
     dldbn, grad_gamma = vjp_hadamard(bn, gamma, dldbn_gamma)
-
-    # Collapse gamma (3, 5) -> gamma (5,) for output
-    grad_gamma = unbroadcast(grad_gamma, gamma.shape)
 
     # bn = hadamard(num, denom_b)  # (3, 5) * (3, 5)
     dldnum, dldenom_b = vjp_hadamard(num, denom_vec, dldbn)
