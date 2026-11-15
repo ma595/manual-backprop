@@ -1,4 +1,5 @@
 from src.ops import *
+from src.batchnorm import fwd_bn, fwd_backwd_bn
 import torch
 import numpy as np
 
@@ -145,9 +146,62 @@ def test_vjp_hadamard(shape_a, shape_b, op, vjp_op):
     np.testing.assert_allclose(a_torch.grad.detach().cpu().numpy(), dlda)
     np.testing.assert_allclose(b_torch.grad.detach().cpu().numpy(), dldb)
 
-    # dldp = np.random.rand()
 
-    # hadamard(
+def test_bn_fwd():
+    num_examples = 3
+    num_feats = 5
+    shape = (num_examples, num_feats)
+    # create torch data
+    data = torch.rand(*shape, dtype=torch.float64)
+    bn = torch.nn.BatchNorm1d(num_features=shape[1], dtype=torch.float64)
+    data_cpy = data.detach().cpu().numpy()
+    assert np.allclose(bn(data).detach().cpu().numpy(), fwd_bn(X=data_cpy))
+
+
+def test_fwd_bckwd_bn():
+
+    num_examples = 3
+    num_feats = 5
+    shape = (num_examples, num_feats)
+
+    # create torch data
+    data = torch.rand(*shape, dtype=torch.float64)
+
+    gamma = np.random.rand(
+        data.shape[1],
+    )
+    bias = np.random.rand(
+        data.shape[1],
+    )
+
+    data_cpy = data.detach().clone().numpy()
+    dldp_np = np.random.randn(*data.shape).astype(np.float64)
+    fwd, dldX, dldgamma, dldbias = fwd_backwd_bn(data_cpy, dldp_np, gamma, bias)
+
+    data.requires_grad = True
+    model = torch.nn.BatchNorm1d(num_features=data.shape[1], dtype=torch.float64)
+    with torch.no_grad():
+        model.weight.copy_(torch.from_numpy(gamma))
+        model.bias.copy_(torch.from_numpy(bias))
+    model.zero_grad()
+    fwd_pt = model(data)
+    fwd_pt.backward(torch.tensor(dldp_np))
+    # params = model.parameters()
+    # params_l = list(params)
+
+    grads = {}
+
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            grads[name] = param.grad
+
+    grads["X"] = data.grad
+
+    # now do assertions
+    np.testing.assert_allclose(grads["weight"].detach().cpu().numpy(), dldgamma)
+    np.testing.assert_allclose(grads["bias"].detach().cpu().numpy(), dldbias)
+    np.testing.assert_allclose(grads["X"].detach().cpu().numpy(), dldX)
+    np.testing.assert_allclose(fwd_pt.detach().cpu().numpy(), fwd)
 
 
 if __name__ == "__main__":
