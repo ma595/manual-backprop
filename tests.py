@@ -147,17 +147,6 @@ def test_vjp_hadamard(shape_a, shape_b, op, vjp_op):
     np.testing.assert_allclose(b_torch.grad.detach().cpu().numpy(), dldb)
 
 
-def test_bn_fwd():
-    num_examples = 3
-    num_feats = 5
-    shape = (num_examples, num_feats)
-    # create torch data
-    data = torch.rand(*shape, dtype=torch.float64)
-    bn = torch.nn.BatchNorm1d(num_features=shape[1], dtype=torch.float64)
-    data_cpy = data.detach().cpu().numpy()
-    assert np.allclose(bn(data).detach().cpu().numpy(), fwd_bn(X=data_cpy))
-
-
 def test_fwd_bckwd_bn():
 
     num_examples = 3
