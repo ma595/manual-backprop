@@ -26,13 +26,16 @@ def mm(a, b):
 def hadamard(a, b):
     return a * b
 
+
 # p = sigmoid(a)
 def sigmoid(a):
     return 1.0 / (1 + np.exp(-a))
 
+
 # p = a + b
 def vjp_add(a, b, dldp):
-    return unbroadcast(dldp, a.shape), unbroadcast(dldp, b.shape)
+    return unbroadcast(dldp, np.shape(a)), unbroadcast(dldp, np.shape(b))
+
 
 # p = a - b
 def vjp_sub(a, b, dldp):
@@ -42,6 +45,7 @@ def vjp_sub(a, b, dldp):
 
 # the fused transpose + mm implementation
 # more efficient than vjp_mm for linear layer
+
 
 # p = a @ b.Y
 def vjp_linear(a, b, dldp):
@@ -54,14 +58,15 @@ def vjp_linear(a, b, dldp):
     # dldW = dldp.T @ X
     # return dldX, dldW
     dlda = dldp @ b
-    dldb = dldp.T @ a
+    dldb = unbroadcast(dldp.swapaxes(-2, -1) @ a, b.shape)
     return dlda, dldb
 
-# p = a @ b 
+
+# p = a @ b
 def vjp_mm(a, b, dldp):
     # dl/db_{ij} = a.T_{ik} dldp_{kj} (sum over batch dim of a)
     # if g = dldp
-    # for a single update dldW_11 = X_11 g_11 + X_21 g_21 
+    # for a single update dldW_11 = X_11 g_11 + X_21 g_21
     # i.e. each parameter is used once per batch (for a batch of two we update the gradient by 2 adds)
     # for a = (2,3,4) and b = (4,5)
     # )
@@ -122,11 +127,12 @@ def vjp_scale(scale, dldp):
     return dlda
 
 
-# p = a * b 
+# p = a * b
 def vjp_hadamard(a, b, dldp):
-    dlda = unbroadcast(dldp * b, np.shape(a)) # np.shape now works for scalars
+    dlda = unbroadcast(dldp * b, np.shape(a))  # np.shape now works for scalars
     dldb = unbroadcast(dldp * a, np.shape(b))
     return dlda, dldb
+
 
 # p = pow(a, alpha)
 def vjp_power(a, alpha, dldp):
@@ -134,6 +140,7 @@ def vjp_power(a, alpha, dldp):
         alpha * dldp * pow(a, alpha - 1.0)
     )  # local grad or jacob is alpha * pow(a, alpha-1)
     return dlda
+
 
 # p = sigmoid(a)
 def vjp_sigmoid(a, dldp):

@@ -10,7 +10,7 @@ np.random.seed(0)
 MM_SHAPES = [
     ((3, 4), (4, 5)),
     ((2, 3, 4), (2, 4, 5)),  # batched, same batch dims
-    ((2, 3, 4), (4, 5)),     # b broadcast over batch
+    ((2, 3, 4), (4, 5)),  # b broadcast over batch
     ((1, 3, 4), (2, 4, 5)),  # a broadcast over batch
 ]
 
@@ -47,32 +47,61 @@ def test_vjp_mm(shape_a, shape_b):
     np.testing.assert_allclose(b_torch.grad.detach().cpu().numpy(), dldb)
 
 
-# @pytest.mark.parametrize("shape_a, shape_b", MM_SHAPES, ids=str)
-# def test_vjp_linear(shape_a, shape_b):
-#     # create some test data
+LINEAR_SHAPES = [
+    ((3, 4), (5, 4)),
+    ((2, 3, 4), (5, 4)),  # b broadcast over batch
+]
 
-#     a = np.random.rand(*shape_a)
-#     b = np.random.rand(*shape_b)
 
-#     p = a @ b
-#     dldp = np.random.rand(*p.shape)
+@pytest.mark.parametrize("shape_a, shape_b", LINEAR_SHAPES, ids=str)
+def test_vjp_linear(shape_a, shape_b):
+    # create some test data
+    # b is the weight tensor here
 
-#     dlda, dldb = vjp_linear(a, b.T, dldp)
+    a = np.random.rand(*shape_a)
+    b = np.random.rand(*shape_b)
 
-#     a_torch = torch.tensor(a, dtype=torch.float64, requires_grad=True)
-#     b_torch = torch.tensor(b.T, dtype=torch.float64, requires_grad=True)
+    p = linear(a, b)
+    dldp = np.random.rand(*p.shape)
 
-#     fwd = linear(a, b)
+    dlda, dldb = vjp_linear(a, b, dldp)
 
-#     fwd.backward(torch.tensor(dldp, dtype=torch.float64))
+    # now for the pytorch bit (these parts aren't actually used)
+    a_torch = torch.tensor(a, dtype=torch.float64, requires_grad=True)
+    b_torch = torch.tensor(b, dtype=torch.float64, requires_grad=True)
 
-#     # print(list(fwd.parameters()))
+    fwd = linear(a_torch, b_torch)
+    fwd.backward(torch.tensor(dldp, dtype=torch.float64))
 
-#     assert a_torch.grad.shape == dlda.shape
-#     assert b_torch.grad.shape == dldb.shape
+    assert a_torch.grad.shape == dlda.shape
+    assert b_torch.grad.shape == dldb.shape
 
-#     np.testing.assert_allclose(a_torch.grad.detach().cpu().numpy(), dlda)
-#     np.testing.assert_allclose(b_torch.grad.detach().cpu().numpy(), dldb)
+    np.testing.assert_allclose(a_torch.grad.detach().cpu().numpy(), dlda)
+    np.testing.assert_allclose(b_torch.grad.detach().cpu().numpy(), dldb)
+
+    # try from Linear instead
+    from torch.nn import Linear
+
+    print("shape_b ", shape_b)
+
+    fwd = Linear(
+        in_features=shape_b[1],
+        out_features=shape_b[0],
+        bias=False,
+        dtype=torch.float64,
+    )
+
+    with torch.no_grad():
+        fwd.weight.copy_(b_torch)  # use your W, shape (5, 4)
+
+    # create a new tensor otherwise we take derivative twice
+    a_torch = torch.tensor(a, dtype=torch.float64, requires_grad=True)
+    out = fwd(a_torch)
+
+    out.backward(torch.tensor(dldp, dtype=torch.float64))
+
+    np.testing.assert_allclose(a_torch.grad.detach().cpu().numpy(), dlda)
+    np.testing.assert_allclose(fwd.weight.grad.detach().cpu().numpy(), dldb)
 
 
 BROADCAST_SHAPES = [
@@ -82,23 +111,27 @@ BROADCAST_SHAPES = [
     ((), (5,)),  # scalar * vector
 ]
 
+# BINARY_OPS = [(add, vjp_add), (sub, vjp_sub), (hadamard, vjp_hadamard)]
+BINARY_OPS = [(hadamard, vjp_hadamard), (add, vjp_add), (sub, vjp_sub)]
 
+
+@pytest.mark.parametrize("op, vjp_op", BINARY_OPS, ids=["hadamard", "add", "sub"])
 @pytest.mark.parametrize("shape_a, shape_b", BROADCAST_SHAPES, ids=str)
-def test_vjp_hadamard(shape_a, shape_b):
+def test_vjp_hadamard(shape_a, shape_b, op, vjp_op):
     a = np.random.rand(*shape_a)
     b = np.random.rand(*shape_b)
 
-    p = a * b
+    p = op(a, b)
     dldp = np.random.rand(*p.shape)
 
     print(f"dldp.shape={dldp.shape}")
 
-    dlda, dldb = vjp_hadamard(a, b, dldp)
+    dlda, dldb = vjp_op(a, b, dldp)
 
     a_torch = torch.tensor(a, dtype=torch.float64, requires_grad=True)
     b_torch = torch.tensor(b, dtype=torch.float64, requires_grad=True)
 
-    fwd = a_torch * b_torch
+    fwd = op(a_torch, b_torch)
 
     fwd.backward(torch.tensor(dldp, dtype=torch.float64))
 
@@ -135,4 +168,5 @@ if __name__ == "__main__":
 
     # test_vjp_mm(*shapes)
 
-    test_vjp_hadamard((), (1,5))
+    # test_vjp_hadamard((), (1, 5))
+    test_vjp_linear((3, 4), (5, 4))
