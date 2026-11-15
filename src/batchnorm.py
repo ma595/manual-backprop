@@ -54,6 +54,20 @@ def fwd_backwd_bn(
     bias=None,
     eps=1e-5,
 ):
+
+    if X.shape[0] < 2:
+        raise ValueError(
+            f"batch norm needs more than 1 sample per feature, got shape {X.shape}"
+        )
+
+    # bn can be expressed simply as this op:
+    # y_ij = γ_j x̂_ij + β_j
+    # dl/dx̂_ij = γ_j g_ij
+    # dl/dγ_j  = Σ_i g_ij x̂_ij
+    # dl/dβ_j  = Σ_i g_ij
+    # dl/dX    = (depends on dl/dx̂, so on γ)
+    # bias corresponds to beta
+    # gamma is 'weight' in torch land
     eps = np.array(eps)
     if gamma is None:
         gamma = np.ones((X.shape[1],), dtype=np.float64)
@@ -70,20 +84,22 @@ def fwd_backwd_bn(
     sum0_ = np.sum(b, axis=0)  # collapse: vector of size 5 i.e. feats
     var = (1.0 / len(X)) * sum0_  # shape (5,)
     var_eps = add(var, eps)  # Elementwise: (5,) + scalar broadcast
-    denom_vec = power(var_eps, -0.5)  # Pure Power: (5,)
+    denom_vec = power(var_eps, -0.5)  # Pure Power: (3,5)
 
     # --- OUTPUT ---
-    bn = hadamard(num, denom_vec)  # (3,5) * (3,5) # num
-    bn_gamma = hadamard(bn, gamma)  # (3*5) * (1*5)
-    bn_gamma_bias = add(bn_gamma, bias)
+    xhat = hadamard(num, denom_vec)  # (3,5) * (3,5) # num
+    xhat_gamma = hadamard(xhat, gamma)  # (3*5) * (1*5)
+    bn_gamma_bias = add(
+        xhat_gamma, bias
+    )  # Ex: if gamma were ones we could put xhat in instead
 
     fwd = bn_gamma_bias
 
     ## BACKWARD:
     # bn_gamma_bias = add(bn_gamma, bias_)
-    dldbn_gamma, grad_bias = vjp_add(bn_gamma, bias, dldp)  # we return dlbn_gamma
+    dldbn_gamma, grad_bias = vjp_add(xhat_gamma, bias, dldp)  # we return dlbn_gamma
 
-    dldbn, grad_gamma = vjp_hadamard(bn, gamma, dldbn_gamma)
+    dldbn, grad_gamma = vjp_hadamard(xhat, gamma, dldbn_gamma)
 
     # bn = hadamard(num, denom_b)  # (3,5) * (3,5)
     dldnum, dldenom_b = vjp_hadamard(num, denom_vec, dldbn)
