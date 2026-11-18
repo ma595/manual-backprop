@@ -21,32 +21,6 @@ def init_data(examples, feats):
     return torch.rand((examples, feats), dtype=torch.float64)
 
 
-def fwd_bn(X, eps=1e-5):
-    gamma = np.ones((X.shape[1],))
-    bias = np.zeros((X.shape[1],))
-    ## Summation
-    sum0 = np.sum(X, axis=0)  # reduction # collapse: shape(5,).
-    print(sum0.shape)
-    mean = (1.0 / len(X)) * sum0  # compute mean
-    num = sub(X, mean)  # shape (3,5) # broadcasting (possible extra op)
-
-    # Denominator
-    ## Variance
-    b = pow(num, 2)  # size (3, 5) # applied elementwise # num
-    sum0_ = np.sum(b, axis=0)  # collapse: vector of size 5 i.e feats
-    var = (1.0 / len(X)) * sum0_  # (5,)
-    var_eps = add(var, eps)  # Elementwise: (5,) + scalar
-    denom_vec = power(var_eps, -0.5)  # Pure Power: (5,)
-
-    # --- OUTPUT ---
-    bn = hadamard(num, denom_vec)  # (3, 5) * (3, 5) # num
-    bn_gamma = hadamard(bn, gamma)  # (3 * 5) * (1 * 5)
-
-    bn_gamma_bias = add(bn_gamma, bias)
-
-    return bn_gamma_bias
-
-
 def fwd_backwd_bn(
     X,
     dldp,

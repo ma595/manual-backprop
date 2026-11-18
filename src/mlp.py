@@ -5,20 +5,16 @@ from src.ops import *
 torch.manual_seed(0)
 
 
-def initialise_params(X):
-    in_feats = X.shape[1]
-    out_feats = 32
-    W = 0.1 * torch.rand((out_feats, in_feats), dtype=torch.float64)
+def initialise_params(X, Y, hidden=32):
+    in_feats, out_feats = X.shape[1], Y.shape[1]
+    W = 0.1 * torch.rand((hidden, in_feats), dtype=torch.float64)
     W.requires_grad = True
-    b = 0.1 * torch.rand((out_feats), dtype=torch.float64)
+    b = 0.1 * torch.rand((hidden,), dtype=torch.float64)
     b.requires_grad = True
 
-    inh_feats = out_feats
-    outh_feats = 2
-
-    B = 0.1 * torch.rand((outh_feats, inh_feats), dtype=torch.float64)
+    B = 0.1 * torch.rand((out_feats, hidden), dtype=torch.float64)
     B.requires_grad = True
-    c = 0.1 * torch.rand((outh_feats), dtype=torch.float64)
+    c = 0.1 * torch.rand((out_feats,), dtype=torch.float64)
     c.requires_grad = True
 
     return ((W, b), (B, c))
@@ -40,7 +36,7 @@ def ffn(params, X, Y):
     return lo
 
 
-def fwdbck(W, X, Y):
+def fwd_backwd(W, X, Y):
     ((W, b), (B, c)) = W
 
     # forward
@@ -74,40 +70,11 @@ def fwdbck(W, X, Y):
     return ((dldW, dldb), (dldB, dldc)), lo
 
 
-def test_single_step(X_train, Y_train):
-    params = initialise_params(X_train)
-    loss = ffn(params, X_train, Y_train)
-    loss.backward()
-    ((W, b), (B, c)) = params
-    # W_new = fwdbck(W, X, Y)
-    # Verify against PyTorch's native autograd:
-
-    W_np = W.detach().numpy()
-    b_np = b.detach().numpy()
-    B_np = B.detach().numpy()
-    c_np = c.detach().numpy()
-
-    params_np = ((W_np, b_np), (B_np, c_np))
-
-    grads, loss = fwdbck(params_np, X_train.detach().numpy(), Y_train.detach().numpy())
-    (dldW, dldb), (dldB, dldc) = grads
-
-    # print(W)
-    # assert torch.allclose
-    # print(type(W.grad), type(dldW))
-    # print(W.shape, dldW.shape)
-
-    np.testing.assert_allclose(dldW, W.grad.numpy())
-    np.testing.assert_allclose(dldb, b.grad.numpy())
-    np.testing.assert_allclose(dldB, B.grad.numpy())
-    np.testing.assert_allclose(dldc, c.grad.numpy())
-
-
 if __name__ == "__main__":
     from src.dataset import create_XY_data
 
     tempX, tempY = create_XY_data(10)
     print(tempX.shape)
     print(tempY.shape)
-    
-    test_single_step(tempX, tempY)
+
+    # test_single_step(tempX, tempY)

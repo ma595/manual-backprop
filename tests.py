@@ -1,5 +1,7 @@
 from src.ops import *
-from src.batchnorm import fwd_bn, fwd_backwd_bn
+from src.batchnorm import fwd_backwd_bn
+from src.mlp import ffn, fwd_backwd, initialise_params
+
 import torch
 import numpy as np
 
@@ -191,6 +193,40 @@ def test_fwd_bckwd_bn():
     np.testing.assert_allclose(grads["bias"].detach().cpu().numpy(), dldbias)
     np.testing.assert_allclose(grads["X"].detach().cpu().numpy(), dldX)
     np.testing.assert_allclose(fwd_pt.detach().cpu().numpy(), fwd)
+
+
+def test_single_step():
+    from src.dataset import create_XY_data
+
+    X_train, Y_train = create_XY_data(10)
+    params = initialise_params(X_train, Y_train)
+    loss = ffn(params, X_train, Y_train)
+    loss.backward()
+    ((W, b), (B, c)) = params
+    # W_new = fwdbck(W, X, Y)
+    # Verify against PyTorch's native autograd:
+
+    W_np = W.detach().numpy()
+    b_np = b.detach().numpy()
+    B_np = B.detach().numpy()
+    c_np = c.detach().numpy()
+
+    params_np = ((W_np, b_np), (B_np, c_np))
+
+    grads, loss = fwd_backwd(
+        params_np, X_train.detach().numpy(), Y_train.detach().numpy()
+    )
+    (dldW, dldb), (dldB, dldc) = grads
+
+    # print(W)
+    # assert torch.allclose
+    # print(type(W.grad), type(dldW))
+    # print(W.shape, dldW.shape)
+
+    np.testing.assert_allclose(dldW, W.grad.numpy())
+    np.testing.assert_allclose(dldb, b.grad.numpy())
+    np.testing.assert_allclose(dldB, B.grad.numpy())
+    np.testing.assert_allclose(dldc, c.grad.numpy())
 
 
 if __name__ == "__main__":
