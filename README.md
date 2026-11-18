@@ -25,34 +25,35 @@ video](https://www.youtube.com/watch?v=DGF1FtfbO6o) by Andrew Fitzgibbon at RSEC
 
 Two models are built from these ops:
 
-- `batchnorm.py`: batch norm forward and backward, written as a chain of primitive ops.
+- `src/batchnorm.py`: batch norm forward and backward, written as a chain of primitive ops.
 - `mlp.py`: a two-layer MLP (linear, sigmoid, linear, MSE) on a 2D rotation dataset. The data
   comes from `src/dataset.py`.
 
 ## What is checked
 
-Both models are compared against PyTorch in float64 with `np.testing.assert_allclose` at its
+Everything is compared against PyTorch in float64 with `np.testing.assert_allclose` at its
 default tolerance (`rtol=1e-7`):
 
-- batch norm: the forward output and the gradients for `X`, `gamma` and `beta`, against
-  `torch.nn.BatchNorm1d`
-- MLP: the gradients for all four parameters, against `loss.backward()`
+- per-op tests in `tests.py` for `mm`, `linear`, `add`, `sub` and `hadamard`, over several
+  broadcasting shapes
+- batch norm (in `tests.py`): the forward output and the gradients for `X`, `gamma` and `beta`,
+  with random `gamma` and `beta`, against `torch.nn.BatchNorm1d`
+- MLP (in `mlp.py`): the gradients for all four parameters, against `loss.backward()`
 
 Limitations:
 
-- The batch norm check uses PyTorch's default `gamma = 1` and `beta = 0`, so it cannot catch a
-  mistake in how `gamma` and `beta` are applied in the forward pass.
-- The individual ops are only tested through these two models. There are no per-op tests yet.
+- `sigmoid`, `power`, `scale` and `mse` have no per-op tests. They are only tested through the two
+  models.
 
 ## Running it
 
 ```sh
 pip install -r requirements.txt
-python batchnorm.py
+python -m pytest tests.py
 python mlp.py
 ```
 
-Each script exits silently if the gradients match and raises an `AssertionError` if they do not.
+`mlp.py` raises an `AssertionError` if the gradients do not match.
 
 ## Notebooks
 
@@ -65,8 +66,9 @@ The derivations are in `notebooks/`:
 - `torch_batch_norm_derivation.ipynb`: batch norm broken into primitive ops, and the VJPs of
   broadcast and reduction.
 
+The same derivations are written up in LaTeX in `latex/derivations.tex`.
+
 ## Next steps
 
-- per-op tests against finite differences, run with pytest
-- random `gamma` and `beta` in the batch norm test
+- per-op tests against finite differences
 - a tape, so the backward pass is generated from the forward pass instead of written out by hand
